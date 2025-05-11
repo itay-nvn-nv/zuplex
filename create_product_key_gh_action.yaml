@@ -1,0 +1,123 @@
+name: Generate Key and Send Emails
+
+on:
+  workflow_dispatch:
+    inputs:
+      customer_name_lowercase:
+        description: 'Customer Name (lowercase, for key generation)'
+        required: true
+        type: string
+      customer_name_formal:
+        description: 'Customer Name (Formal, for email)'
+        required: true
+        type: string
+      sales_order_number:
+        description: 'Sales Order Number'
+        required: true
+        type: string
+      contact_name:
+        description: 'Contact Name'
+        required: true
+        type: string
+
+jobs:
+  generate_key_and_send_emails:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v3
+
+      - name: Generate Key
+        id: generate_key
+        uses: ./.github/actions/your-key-generation-action  #  **REPLACE WITH PATH TO YOUR KEY GENERATION ACTION**
+        with:
+          customer_name: ${{ github.event.inputs.customer_name_lowercase }}
+
+      - name: Save Key to File
+        run: |
+          echo "${{ steps.generate_key.outputs.generated_key }}" > customer_key.txt # Assuming your key generation action outputs the key as `generated_key`
+        shell: bash
+
+      - name: Create Customer-Facing Email
+        id: customer_email
+        run: |
+          CUSTOMER_NAME="${{ github.event.inputs.customer_name_formal }}"
+          SALES_ORDER="${{ github.event.inputs.sales_order_number }}"
+          CONTACT_NAME="${{ github.event.inputs.contact_name }}"
+
+          EMAIL_BODY=$(cat <<EOF
+          Dear $CUSTOMER_NAME,
+
+          Thank you for your order!
+
+          Your key for Sales Order #$SALES_ORDER is attached. Please keep this key in a safe place.
+
+          If you have any questions, please contact $CONTACT_NAME.
+
+          Sincerely,
+
+          [Your Name]
+          EOF
+          )
+          echo "::set-output name=subject::Your Key for Sales Order #$SALES_ORDER"
+          echo "::set-output name=body::$EMAIL_BODY"
+        shell: bash
+
+      - name: Create Internal Email
+        id: internal_email
+        run: |
+          CUSTOMER_NAME_FORMAL="${{ github.event.inputs.customer_name_formal }}"
+          CUSTOMER_NAME_LOWERCASE="${{ github.event.inputs.customer_name_lowercase }}"
+          SALES_ORDER="${{ github.event.inputs.sales_order_number }}"
+          KEY=$(cat customer_key.txt)
+
+          EMAIL_BODY=$(cat <<EOF
+          New key generated for $CUSTOMER_NAME_FORMAL (lowercase: $CUSTOMER_NAME_LOWERCASE)
+
+          Sales Order: $SALES_ORDER
+
+          Key: $KEY
+
+          File customer_key.txt has been saved to the repo, ready to be archived
+
+          EOF
+          )
+          echo "::set-output name=subject::Key Generated for $CUSTOMER_NAME_FORMAL (SO#$SALES_ORDER)"
+          echo "::set-output name=body::$EMAIL_BODY"
+        shell: bash
+
+
+      - name: Send Customer Email (Outlook)
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: outlook.office365.com
+          server_port: 587
+          username: ${{ secrets.OUTLOOK_USERNAME }}   #  **REPLACE WITH YOUR OUTLOOK USERNAME SECRET**
+          password: ${{ secrets.OUTLOOK_PASSWORD }}   #  **REPLACE WITH YOUR OUTLOOK PASSWORD SECRET**
+          secure: tls
+          to: ${{ secrets.CUSTOMER_EMAIL }} # Or, define this as an input if the email address is variable
+          from: ${{ secrets.OUTLOOK_USERNAME }}  #  **REPLACE WITH YOUR OUTLOOK USERNAME SECRET**
+          subject: ${{ steps.customer_email.outputs.subject }}
+          body: ${{ steps.customer_email.outputs.body }}
+          attachments: customer_key.txt
+
+      - name: Send Internal Email (Outlook)
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: outlook.office365.com
+          server_port: 587
+          username: ${{ secrets.OUTLOOK_USERNAME }}   #  **REPLACE WITH YOUR OUTLOOK USERNAME SECRET**
+          password: ${{ secrets.OUTLOOK_PASSWORD }}   #  **REPLACE WITH YOUR OUTLOOK PASSWORD SECRET**
+          secure: tls
+          to: ${{ secrets.INTERNAL_EMAIL }}   #  **REPLACE WITH YOUR INTERNAL RECIPIENT EMAIL SECRET**
+          from: ${{ secrets.OUTLOOK_USERNAME }}  #  **REPLACE WITH YOUR OUTLOOK USERNAME SECRET**
+          subject: ${{ steps.internal_email.outputs.subject }}
+          body: ${{ steps.internal_email.outputs.body }}
+
+      - name: Archive the key to artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: customer_key_${{ github.event.inputs.customer_name_lowercase }}_${{ github.event.inputs.sales_order_number }}
+          path: customer_key.txt
+          retention-days: 7 # adjust as needed.
