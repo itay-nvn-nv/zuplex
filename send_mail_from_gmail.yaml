@@ -1,0 +1,35 @@
+name: Send Email from Gmail (Without 2FA - USE WITH CAUTION)
+
+on:
+  workflow_dispatch:
+    inputs:
+      recipient_email:
+        description: 'Recipient Email Address'
+        required: true
+        type: string
+      subject:
+        description: 'Email Subject'
+        required: true
+        type: string
+      body:
+        description: 'Email Body'
+        required: true
+        type: string
+
+jobs:
+  send_email:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Send Email with Gmail
+        uses: dawidd6/action-send-mail@v3  # Or another email action
+        with:
+          server_address: smtp.gmail.com
+          server_port: 587
+          username: ${{ secrets.GMAIL_USERNAME }}
+          password: ${{ secrets.GMAIL_PASSWORD }}   # **Using Standard Password - UNSAFE**
+          secure: tls
+          to: ${{ github.event.inputs.recipient_email }}
+          from: ${{ secrets.GMAIL_USERNAME }}
+          subject: ${{ github.event.inputs.subject }}
+          body: ${{ github.event.inputs.body }}
