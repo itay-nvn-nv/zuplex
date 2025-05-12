@@ -1,3 +1,5 @@
+# runai-order@nvidia.com
+
 name: Generate Key and Send Emails
 
 on:
